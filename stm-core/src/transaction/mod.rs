@@ -77,7 +77,7 @@ impl Transaction {
     /// Run a function with a transaction.
     ///
     /// It is equivalent to `atomically`.
-    pub fn with<T, F>(f: F) -> T 
+    pub fn with<T, F>(f: F) -> T
     where F: Fn(&mut Transaction) -> StmResult<T>,
     {
         match Transaction::with_control(|_| TransactionControl::Retry, f) {
@@ -124,11 +124,6 @@ impl Transaction {
                     // Check if the user wants to abort the transaction.
                     if let TransactionControl::Abort = control(e) {
                         return None;
-                    }
-
-                    // on retry wait for changes
-                    if let Retry = e {
-                        transaction.wait_for_change();
                     }
                 }
             }
@@ -197,7 +192,7 @@ impl Transaction {
         Ok(())
     }
 
-    /// Combine two calculations. When one blocks with `retry`, 
+    /// Combine two calculations. When one blocks with `retry`,
     /// run the other, but don't commit the changes in the first.
     ///
     /// If both block, `Transaction::or` still waits for `TVar`s in both functions.
@@ -258,47 +253,6 @@ impl Transaction {
         self.vars.clear();
     }
 
-    /// Wait for any variable to change,
-    /// because the change may lead to a new calculation result.
-    fn wait_for_change(&mut self) {
-        // Create control block for waiting.
-        let ctrl = Arc::new(ControlBlock::new());
-
-        let vars = mem::replace(&mut self.vars, BTreeMap::new());
-        let mut reads = Vec::with_capacity(self.vars.len());
-            
-        let blocking = vars.into_iter()
-            .filter_map(|(a, b)| {
-                b.into_read_value()
-                    .map(|b| (a, b))
-            })
-            // Check for consistency.
-            .all(|(var, value)| {
-                var.wait(&ctrl);
-                let x = {
-                    // Take read lock and read value.
-                    let guard = var.value.read();
-                    Arc::ptr_eq(&value, &guard)
-                };
-                reads.push(var);
-                x
-            });
-
-        // If no var has changed, then block.
-        if blocking {
-            // Propably wait until one var has changed.
-            ctrl.wait();
-        }
-
-        // Let others know that ctrl is dead.
-        // It does not matter, if we set too many
-        // to dead since it may slightly reduce performance
-        // but not break the semantics.
-        for var in &reads {
-            var.set_dead();
-        }
-    }
-
     /// Write the log back to the variables.
     ///
     /// Return true for success and false, if a read var has changed
@@ -332,7 +286,7 @@ impl Transaction {
                     write_vec.push((w, lock));
                     written.push(var);
                 }
-                
+
                 // We need to check for consistency and
                 // take a write lock.
                 ReadWrite(ref original,ref w) => {
@@ -373,7 +327,7 @@ impl Transaction {
             // Commit value.
             *lock = value.clone();
         }
-        
+
         for var in written {
             // Unblock all threads waiting for it.
             var.wake_all();
@@ -428,7 +382,7 @@ mod test {
     }
 
     /// Run a transaction with a control function, that always aborts.
-    /// The transaction still tries to run a single time and should successfully 
+    /// The transaction still tries to run a single time and should successfully
     /// commit in this test.
     #[test]
     fn transaction_with_control_abort_on_single_run() {
@@ -477,7 +431,7 @@ mod test {
         assert_eq!(write.read_atomic(), 42);
     }
 
-    // Dat name. seriously? 
+    // Dat name. seriously?
     #[test]
     fn transaction_control_stuff() {
         let read = TVar::new(42);
