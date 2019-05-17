@@ -77,7 +77,7 @@ impl Transaction {
     /// Run a function with a transaction.
     ///
     /// It is equivalent to `atomically`.
-    pub fn with<T, F>(f: F) -> T
+    pub fn with<T, F>(f: F) -> (T, usize)
     where F: Fn(&mut Transaction) -> StmResult<T>,
     {
         match Transaction::with_control(|_| TransactionControl::Retry, f) {
@@ -99,11 +99,12 @@ impl Transaction {
     /// Please not, that the transaction may still infinitely wait for changes when `retry` is
     /// called and `control` does not abort.
     /// If you need a timeout, another thread should signal this through a TVar.
-    pub fn with_control<T, F, C>(mut control: C, f: F) -> Option<T>
+    pub fn with_control<T, F, C>(mut control: C, f: F) -> Option<(T, usize)>
     where F: Fn(&mut Transaction) -> StmResult<T>,
           C: FnMut(StmError) -> TransactionControl,
     {
         let _guard = TransactionGuard::new();
+        let mut retries = 0;
 
         // create a log guard for initializing and cleaning up
         // the log
@@ -116,7 +117,7 @@ impl Transaction {
                 // on success exit loop
                 Ok(t) => {
                     if transaction.commit() {
-                        return Some(t);
+                        return Some((t, retries));
                     }
                 }
 
@@ -130,6 +131,7 @@ impl Transaction {
 
             // clear log before retrying computation
             transaction.clear();
+            retries += 1;
         }
     }
 
