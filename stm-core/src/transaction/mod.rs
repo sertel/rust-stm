@@ -18,7 +18,7 @@ use std::cell::Cell;
 
 use self::log_var::LogVar;
 use self::log_var::LogVar::*;
-use self::control_block::ControlBlock;
+
 use super::tvar::{TVar, VarControlBlock};
 use super::result::*;
 use super::result::StmError::*;
@@ -134,7 +134,7 @@ impl Transaction {
     }
 
     /// Perform a downcast on a var.
-    fn downcast<T: Any + Clone>(var: Arc<Any>) -> T {
+    fn downcast<T: Any + Clone>(var: Arc<dyn Any>) -> T {
         match var.downcast_ref::<T>() {
             Some(s) => s.clone(),
             None    => unreachable!("TVar has wrong type")
