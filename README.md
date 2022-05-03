@@ -10,7 +10,7 @@ for more info. Especially the chapter about [Performance](http://chimera.labs.or
 is also important for using STM in rust.
 
 With locks the sequential composition of two 
-two threadsafe actions is no longer threadsafe because
+threadsafe actions is no longer threadsafe because
 other threads may interfer in between of these actions.
 Applying a third lock to protect both may lead to common sources of errors
 like deadlocks or race conditions.
