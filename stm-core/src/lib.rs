@@ -125,7 +125,8 @@ mod result;
 mod test;
 
 pub use tvar::TVar;
-pub use transaction::Transaction;
+pub use transaction::Tx;
+use transaction::{with, TxVersion, Transaction};
 pub use transaction::TransactionControl;
 pub use result::*;
 
@@ -153,8 +154,15 @@ pub fn retry<T>() -> StmResult<T> {
 pub fn atomically<T, F>(f: F) -> T
 where F: Fn(&mut Transaction) -> StmResult<T>
 {
-    Transaction::with(f)
+    with(TxVersion::NonDeterministic, f)
 }
+/// Run a function atomically by using Deterministic Software Transactional Memory.
+pub fn det_atomically<T, F>(f: F) -> T
+where F: Fn(&mut Transaction) -> StmResult<T>
+{
+    with(TxVersion::Deterministic, f)
+}
+
 
 #[inline]
 /// Unwrap `Option` or call retry if it is `None`.
