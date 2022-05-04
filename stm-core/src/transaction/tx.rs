@@ -279,6 +279,7 @@ impl Transaction {
 #[cfg(test)]
 mod test {
     use super::*;
+
     #[test]
     fn read() {
         let mut log = Transaction::new();
@@ -300,96 +301,5 @@ mod test {
 
         // The original value is still preserved.
         assert_eq!(var.read_atomic(), [1, 2]);
-    }
-
-    #[test]
-    fn transaction_simple() {
-        let x = Transaction::with(|_| Ok(42));
-        assert_eq!(x, 42);
-    }
-
-    #[test]
-    fn transaction_read() {
-        let read = TVar::new(42);
-
-        let x = Transaction::with(|trans| {
-            read.read(trans)
-        });
-
-        assert_eq!(x, 42);
-    }
-
-    /// Run a transaction with a control function, that always aborts.
-    /// The transaction still tries to run a single time and should successfully
-    /// commit in this test.
-    #[test]
-    fn transaction_with_control_abort_on_single_run() {
-        let read = TVar::new(42);
-
-        let x = Transaction::with_control(|_| TransactionControl::Abort, |tx| {
-            read.read(tx)
-        });
-
-        assert_eq!(x, Some(42));
-    }
-
-    /// Run a transaction with a control function, that always aborts.
-    /// The transaction retries infinitely often. The control function will abort this loop.
-    #[test]
-    fn transaction_with_control_abort_on_retry() {
-        let x: Option<i32> = Transaction::with_control(|_| TransactionControl::Abort, |_| {
-            Err(Retry)
-        });
-
-        assert_eq!(x, None);
-    }
-
-
-    #[test]
-    fn transaction_write() {
-        let write = TVar::new(42);
-
-        Transaction::with(|trans| {
-            write.write(trans, 0)
-        });
-
-        assert_eq!(write.read_atomic(), 0);
-    }
-
-    #[test]
-    fn transaction_copy() {
-        let read = TVar::new(42);
-        let write = TVar::new(0);
-
-        Transaction::with(|trans| {
-            let r = read.read(trans)?;
-            write.write(trans, r)
-        });
-
-        assert_eq!(write.read_atomic(), 42);
-    }
-
-    // Dat name. seriously?
-    #[test]
-    fn transaction_control_stuff() {
-        let read = TVar::new(42);
-        let write = TVar::new(0);
-
-        Transaction::with(|trans| {
-            let r = read.read(trans)?;
-            write.write(trans, r)
-        });
-
-        assert_eq!(write.read_atomic(), 42);
-    }
-
-    /// Test if nested transactions are correctly detected.
-    #[test]
-    #[should_panic]
-    fn transaction_nested_fail() {
-        Transaction::with(|_| {
-            Transaction::with(|_| Ok(42));
-            Ok(1)
-        });
     }
 }
