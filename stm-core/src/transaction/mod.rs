@@ -13,17 +13,18 @@ mod deterministic;
 mod nondeterministic;
 
 pub use self::tx::{Transaction, TransactionControl};
+pub use self::deterministic::Coordination as DTM;
+pub use self::deterministic::TxHandle as DTMHandle;
 
 use std::any::Any;
 use crate::tvar::TVar;
 use super::result::*;
 
 use self::deterministic::Deterministic;
-use self::deterministic::TxHandle;
 use self::nondeterministic::NonDeterministic;
 
 pub enum TxVersion {
-    Deterministic(TxHandle),
+    Deterministic(DTMHandle),
     NonDeterministic
 }
 

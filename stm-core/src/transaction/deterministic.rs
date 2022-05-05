@@ -31,13 +31,13 @@ pub struct TxHandle {
     coordination_rx: Receiver<(Receiver<Token>, Sender<Token>)>,
 }
 
-struct Coordination {
+pub struct Coordination {
     /// This list essentially defines the order of the transactions.
     txs: Vec<TxCoordinationState>,
 }
 
 impl Coordination {
-    pub fn new() -> Coordination {
+    pub(crate) fn new() -> Coordination {
         Coordination { txs: Vec::new() }
     }
 
@@ -56,11 +56,12 @@ impl Coordination {
 
     fn assign_channels(&self) -> Receiver<Token> {
         let (first_tx, mut prev_rx) = channel();
-        let (next_tx, last_rx) = channel();
+        let (last_tx, last_rx) = channel();
 
         first_tx
             .send(())
             .expect("Invariant broken: first send failed.");
+
         let (last, elements) = self
             .txs
             .split_last()
@@ -73,10 +74,14 @@ impl Coordination {
             prev_rx = n_rx;
         }
 
+        last.coordination_tx
+            .send((prev_rx, last_tx))
+            .expect("Invariant broken: could not dispatch coordination");
+
         last_rx
     }
 
-    pub fn coordinate(&mut self) {
+    pub fn compute(&mut self) {
         while self.txs.len() > 0 {
             self.assign_channels();
 

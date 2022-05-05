@@ -134,7 +134,7 @@ mod test;
 
 pub use tvar::TVar;
 pub use transaction::Tx;
-use transaction::{with, TxVersion, Transaction};
+use transaction::{with, TxVersion, Transaction, DTM, DTMHandle};
 pub use transaction::TransactionControl;
 pub use result::*;
 
@@ -243,11 +243,14 @@ pub fn optionally<T,F>(tx: &mut Transaction, f: F) -> StmResult<Option<T>>
 }
 
 /// Run a function atomically by using Deterministic Software Transactional Memory.
-pub fn det_atomically<T, F>(f: F) -> T
+pub fn dtm() -> DTM {
+    DTM::new()
+}
+
+pub fn det_atomically<T, F>(h: DTMHandle, f: F) -> T
 where F: Fn(&mut Transaction) -> StmResult<T>
 {
-    unimplemented!()
-    //with(TxVersion::Deterministic, f)
+    with(TxVersion::Deterministic(h), f)
 }
 
 
