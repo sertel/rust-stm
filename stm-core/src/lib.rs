@@ -114,6 +114,14 @@
 //! Every used `TVar` increases the chance of collisions. Therefore you should
 //! keep the amount of accessed variables as low as needed.
 //!
+//! # Determinism
+//!
+//! The whole idea of STM is speculative parallelism at the cost of
+//! non-deterministic behavior.
+//! Nevertheless there is a desire to execute computation deterministically,
+//! for easier debugging and predictable performance. Hence, this library
+//! also provides a deterministic STM implementation.
+//!
 
 extern crate parking_lot;
 
@@ -156,13 +164,6 @@ where F: Fn(&mut Transaction) -> StmResult<T>
 {
     with(TxVersion::NonDeterministic, f)
 }
-/// Run a function atomically by using Deterministic Software Transactional Memory.
-pub fn det_atomically<T, F>(f: F) -> T
-where F: Fn(&mut Transaction) -> StmResult<T>
-{
-    with(TxVersion::Deterministic, f)
-}
-
 
 #[inline]
 /// Unwrap `Option` or call retry if it is `None`.
@@ -239,6 +240,14 @@ pub fn optionally<T,F>(tx: &mut Transaction, f: F) -> StmResult<Option<T>>
         |t| f(t).map(Some),
         |_| Ok(None)
     )
+}
+
+/// Run a function atomically by using Deterministic Software Transactional Memory.
+pub fn det_atomically<T, F>(f: F) -> T
+where F: Fn(&mut Transaction) -> StmResult<T>
+{
+    unimplemented!()
+    //with(TxVersion::Deterministic, f)
 }
 
 

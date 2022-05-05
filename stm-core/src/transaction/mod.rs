@@ -19,10 +19,11 @@ use crate::tvar::TVar;
 use super::result::*;
 
 use self::deterministic::Deterministic;
+use self::deterministic::TxHandle;
 use self::nondeterministic::NonDeterministic;
 
 pub enum TxVersion {
-    Deterministic,
+    Deterministic(TxHandle),
     NonDeterministic
 }
 
@@ -82,11 +83,11 @@ where F: Fn(&mut Transaction) -> StmResult<T>,
 {
     let r  =
         match v {
-                TxVersion::Deterministic => 
-                    Deterministic::new().with_control(|_| TransactionControl::Retry, f),
-                TxVersion::NonDeterministic => 
+            TxVersion::Deterministic(handle) => 
+                Deterministic::new(handle).with_control(|_| TransactionControl::Retry, f),
+            TxVersion::NonDeterministic => 
                 NonDeterministic::new().with_control(|_| TransactionControl::Retry, f)
-            };
+        };
     match r {
         Some(t) => t,
         None    => unreachable!()

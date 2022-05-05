@@ -5,51 +5,112 @@ use transaction::{Tx, TxBase};
 
 use std::any::Any;
 
-use std::sync::mpsc::{Receiver, Sender};
+use std::sync::mpsc::{channel, Receiver, Sender};
 
 type Token = ();
+enum Done {
+    Retry,
+    Completed,
+}
 
 /// This is an implementation of DeSTM:
 /// Ravichandran, K., Gavrilovska, A. and Pande, S., 2014, August.
 /// DeSTM: harnessing determinism in STMs for application development. PACT 2014
 /// https://dl.acm.org/doi/pdf/10.1145/2628071.2628094
 ///
-/// Our implementation based on channels rather than synchronized variables.
+/// Our implementation is based on channels rather than synchronized variables.
 ///
 
+struct TxCoordinationState {
+    done_rx: Receiver<Done>,
+    coordination_tx: Sender<(Receiver<Token>, Sender<Token>)>,
+}
+
+pub struct TxHandle {
+    done_tx: Sender<Done>,
+    coordination_rx: Receiver<(Receiver<Token>, Sender<Token>)>,
+}
+
 struct Coordination {
-    tx_count: usize,
-    current_tx_count: usize,
+    /// This list essentially defines the order of the transactions.
+    txs: Vec<TxCoordinationState>,
 }
 
 impl Coordination {
-    fn report_started(&mut self) {
-        unimplemented!()
+    pub fn new() -> Coordination {
+        Coordination { txs: Vec::new() }
     }
 
-    fn await_all_started(&self) {
-        unimplemented!()
+    pub fn register(&mut self) -> TxHandle {
+        let (done_tx, done_rx) = channel();
+        let (coordination_tx, coordination_rx) = channel();
+        self.txs.push(TxCoordinationState {
+            done_rx,
+            coordination_tx,
+        });
+        TxHandle {
+            done_tx,
+            coordination_rx,
+        }
     }
 
-    fn report_done(&mut self) {
-        unimplemented!()
+    fn assign_channels(&self) -> Receiver<Token> {
+        let (first_tx, mut prev_rx) = channel();
+        let (next_tx, last_rx) = channel();
+
+        first_tx
+            .send(())
+            .expect("Invariant broken: first send failed.");
+        let (last, elements) = self
+            .txs
+            .split_last()
+            .expect("Invariant broken: no transactions.");
+        for e in elements {
+            let (n_tx, n_rx) = channel();
+            e.coordination_tx
+                .send((prev_rx, n_tx))
+                .expect("Invariant broken: could not dispatch coordination");
+            prev_rx = n_rx;
+        }
+
+        last_rx
     }
 
-    fn await_round_done(&self) {
-        unimplemented!()
+    pub fn coordinate(&mut self) {
+        while self.txs.len() > 0 {
+            self.assign_channels();
+
+            // retrieve all results
+            let mut retries = Vec::new();
+            // note: this loop preserves the order of the transactions!
+            for tx in self.txs.drain(..) {
+                let done = tx
+                    .done_rx
+                    .recv()
+                    .expect("Invariant broken: coordinator could not receive done signal.");
+                match done {
+                    Done::Completed => (),
+                    Done::Retry => retries.push(tx),
+                }
+            }
+
+            // reassign channels
+            self.txs = retries;
+        }
     }
 }
 
 pub struct Deterministic {
-    token_tx: Sender<Token>,
-    token_rx: Receiver<Token>,
+    handle: TxHandle,
     tx: Transaction,
-    coordination: Coordination,
 }
 
 impl Deterministic {
-    pub fn new() -> Deterministic {
-        unimplemented!()
+    pub fn new(handle: TxHandle) -> Deterministic {
+        Deterministic {
+            handle,
+            tx: Transaction::new(),
+        }
     }
 }
 
@@ -83,8 +144,12 @@ impl Tx for Deterministic {
 
         // loop until success
         loop {
-            // Constaint #1: report started
-            self.coordination.report_started();
+            // Constraint #2: finish prev round before starting the next
+            let (token_rx, token_tx) = self
+                .handle
+                .coordination_rx
+                .recv()
+                .expect("Invariant broken: could not receive token channels.");
 
             // run the computation
             let result = f(&mut self.tx);
@@ -92,14 +157,12 @@ impl Tx for Deterministic {
             // Constraint #1:
             // - I have the token and
             // - All other transactions started already
-            match self.token_rx.recv() {
+            match token_rx.recv() {
                 Err(_) => {
                     // we failed in the execution: tear down
                     return None;
                 }
                 Ok(token) => {
-                    self.coordination.await_all_started();
-
                     let decision = match result {
                         // on success exit loop
                         Ok(t) => {
@@ -113,19 +176,27 @@ impl Tx for Deterministic {
                         Err(e) => (control(e), None),
                     };
 
-                    // whatever happens, I need pass along the token
-                    self.token_tx
+                    // whatever happens, I need to pass along the token
+                    token_tx
                         .send(token)
                         .expect("Invariant broken: could not send token.");
 
+                    // report the decision
                     match decision {
-                        (TransactionControl::Abort, r) => return r,
+                        (TransactionControl::Abort, r) => {
+                            self.handle
+                                .done_tx
+                                .send(Done::Completed)
+                                .expect("Invariant broken: sending done signal failed.");
+                            return r;
+                        }
                         (TransactionControl::Retry, _) => {
                             // clear log before retrying computation
                             self.tx.clear();
-
-                            // Constaint #2: finish round before starting next
-                            self.coordination.await_round_done();
+                            self.handle
+                                .done_tx
+                                .send(Done::Retry)
+                                .expect("Invariant broken: sending done signal failed.");
                         }
                     }
                 }
