@@ -179,6 +179,7 @@
 //! thread 2?
 //! In order to solve this problem, the deterministic STM runtime would also need to take control
 //! of the execution.
+//!
 extern crate parking_lot;
 
 mod transaction;
