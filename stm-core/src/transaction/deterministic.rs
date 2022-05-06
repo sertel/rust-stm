@@ -59,13 +59,9 @@ impl Coordination {
         }
     }
 
-    fn assign_channels(&self) -> Receiver<Token> {
+    fn assign_channels(&self) -> (Sender<Token>, Receiver<Token>) {
         let (first_tx, mut prev_rx) = channel();
         let (last_tx, last_rx) = channel();
-
-        first_tx
-            .send(())
-            .expect("Invariant broken: first send failed.");
 
         let (last, elements) = self
             .txs
@@ -83,7 +79,7 @@ impl Coordination {
             .send((prev_rx, last_tx))
             .expect("Invariant broken: could not dispatch coordination");
 
-        last_rx
+        (first_tx, last_rx)
     }
 
     pub(crate) fn freeze(&mut self) {
@@ -98,7 +94,15 @@ impl Coordination {
 
     fn coordinate(&mut self) {
         while self.txs.len() > 0 {
-            self.assign_channels();
+            let (first_tx, last_rx) = self.assign_channels();
+
+            // propagate the token through the batch
+            first_tx
+                .send(())
+                .expect("Invariant broken: first send failed.");
+            last_rx
+                .recv()
+                .expect("Invariant broken: last receive failed.");
 
             // retrieve all results
             let mut retries = Vec::new();

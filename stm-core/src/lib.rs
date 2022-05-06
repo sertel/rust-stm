@@ -523,4 +523,152 @@ mod test_lib {
             optionally(t, |_| retry()));
         assert_eq!(x, None);
     }
+
+#[test]
+    fn deterministic_dep_order() {
+        use std::thread;
+
+        let var = TVar::new(0);
+        // Clone for transactions.
+        let varc1 = var.clone();
+        let varc2 = var.clone();
+
+        // dtm setup
+        let mut dtm = dtm();
+        let handle1 = dtm.register();
+        let handle2 = dtm.register();
+        dtm.freeze();
+
+        let t1 = thread::Builder::new()
+            .name("tx1".to_string())
+            .spawn(
+                move || 
+                    det_atomically(
+                        handle1, 
+                        |tx| varc1.write(tx, 1)
+                    )
+            )
+            .unwrap();
+        let t2 = thread::Builder::new()
+            .name("tx2".to_string())
+            .spawn(
+                move || 
+                    det_atomically(
+                        handle2, 
+                        |tx| varc2.write(tx, 2)
+                    )
+            )
+            .unwrap();
+
+        let r1 = t1.join();
+        assert!(r1.is_ok());
+        let r2 = t2.join();
+        assert!(r2.is_ok());
+
+        assert_eq!(2, var.read_atomic());
+    }
+
+    #[test]
+    fn repeat_deterministic_dep_order() {
+        for _i in 1..100 {
+            deterministic_dep_order()
+        }
+    }
+
+    #[test]
+    fn deterministic_dep_reorder() {
+        use std::thread;
+
+        let var = TVar::new(0);
+        // Clone for transactions.
+        let varc1 = var.clone();
+        let varc2 = var.clone();
+
+        // dtm setup
+        let mut dtm = dtm();
+        let handle1 = dtm.register();
+        let handle2 = dtm.register();
+        dtm.freeze();
+
+        let t2 = thread::Builder::new()
+            .name("tx2".to_string())
+            .spawn(
+                move || 
+                    det_atomically(
+                        handle2, 
+                        |tx| varc2.write(tx, 2)
+                    )
+            )
+            .unwrap();
+        let t1 = thread::Builder::new()
+            .name("tx1".to_string())
+            .spawn(
+                move || 
+                    det_atomically(
+                        handle1, 
+                        |tx| varc1.write(tx, 1)
+                    )
+            )
+            .unwrap();
+
+        let r1 = t1.join();
+        assert!(r1.is_ok());
+        let r2 = t2.join();
+        assert!(r2.is_ok());
+
+        assert_eq!(2, var.read_atomic());
+    }
+
+    #[test]
+    fn repeat_deterministic_dep_reorder() {
+        for _i in 1..100 {
+            deterministic_dep_reorder()
+        }
+    }
+
+    #[test]
+    fn freeze_after_spawn() {
+        use std::thread;
+
+        let var = TVar::new(0);
+        // Clone for transactions.
+        let varc1 = var.clone();
+        let varc2 = var.clone();
+
+        // dtm setup
+        let mut dtm = dtm();
+        let handle1 = dtm.register();
+        let handle2 = dtm.register();
+        
+        let t1 = thread::Builder::new()
+            .name("tx1".to_string())
+            .spawn(
+                move || 
+                    det_atomically(
+                        handle1, 
+                        |tx| varc1.write(tx, 1)
+                    )
+            )
+            .unwrap();
+        let t2 = thread::Builder::new()
+            .name("tx2".to_string())
+            .spawn(
+                move || 
+                    det_atomically(
+                        handle2, 
+                        |tx| varc2.write(tx, 2)
+                    )
+            )
+            .unwrap();
+        
+        dtm.freeze();
+
+        let r1 = t1.join();
+        assert!(r1.is_ok());
+        let r2 = t2.join();
+        assert!(r2.is_ok());
+
+        assert_eq!(2, var.read_atomic());
+   }
 }
+
