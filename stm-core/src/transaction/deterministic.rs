@@ -6,6 +6,7 @@ use transaction::{Tx, TxBase};
 use std::any::Any;
 
 use std::sync::mpsc::{channel, Receiver, Sender};
+use std::thread;
 
 type Token = ();
 enum Done {
@@ -17,6 +18,10 @@ enum Done {
 /// Ravichandran, K., Gavrilovska, A. and Pande, S., 2014, August.
 /// DeSTM: harnessing determinism in STMs for application development. PACT 2014
 /// https://dl.acm.org/doi/pdf/10.1145/2628071.2628094
+/// The techniques in the paper rely on the assumption of complete isolation of transactional
+/// variables.
+/// rust-stm fulfills this requirement because it writes values only on sucessful commit.
+/// In other words, however commits first succeeds.
 ///
 /// Our implementation is based on channels rather than synchronized variables.
 ///
@@ -81,7 +86,17 @@ impl Coordination {
         last_rx
     }
 
-    pub fn compute(&mut self) {
+    pub(crate) fn freeze(&mut self) {
+        let mut coord = Coordination {
+            txs: self.txs.drain(..).collect(),
+        };
+        let _t = thread::spawn(move || coord.coordinate());
+        // no need to join.
+        // the thread will be done when all transaction
+        // threads are done.
+    }
+
+    fn coordinate(&mut self) {
         while self.txs.len() > 0 {
             self.assign_channels();
 

@@ -121,8 +121,64 @@
 //! Nevertheless there is a desire to execute computation deterministically,
 //! for easier debugging and predictable performance. Hence, this library
 //! also provides a deterministic STM implementation.
+//! 
+//! ## Programming model
 //!
-
+//! The programming model for deterministic STM is a bit more involved:
+//!
+//! ```
+//! # use stm_core::{ dtm, det_atomically, freeze};
+//! # use std::thread;
+//!
+//! let f = |tx: &mut _| {
+//!             // some code here
+//!             Ok(5)
+//!         };
+//! let g = |tx: &mut _| {
+//!             // some code here
+//!             Ok(10)
+//!         };
+//!
+//! let mut dtm = dtm();
+//! let tx1 = dtm.register();
+//! let tx2 = dtm.register();
+//! freeze(dtm);
+//!
+//! thread::spawn(move || det_atomically(tx1, f) );
+//! thread::spawn(move || det_atomically(tx2, g) );
+//!
+//! ```
+//! Registering produces a handle that we can pass to a transaction.
+//! Each transaction wants to own a handle and as such each handle can only be passed to one
+//! transaction.
+//! Handles are the way to specify the order of the transactions.
+//! In the above example code, the transaction executing function `f` is executed before the
+//! transaction executing function `g`.
+//! Whether we call `freeze` before or after spawning the threads for the transactions is not
+//! important.
+//! But processing only starts when the set of transactions is frozen.
+//!
+//! ## Limitations of the programming model
+//! 
+//! The programming model is more restricted because the developer needs to specify an order
+//! between the transactions running concurrently.
+//! The following limitation is detrimental:
+//!
+//! * Transactions \\*must not* share a thread.
+//! 
+//! Violating this limitation leads to deadlocks.
+//! 
+//! ## Implications
+//!
+//! Often in STM applications multiple small transactions are placed onto a single thread to solve
+//! the thread granularity problem.
+//! This is not easily possible anymore.
+//! Instead, it is necessary to use one large transaction.
+//! The problem is obvious:
+//! What is the order between the 2nd transaction on thread 1 and the second transaction on
+//! thread 2?
+//! In order to solve this problem, the deterministic STM runtime would also need to take control
+//! of the execution.
 extern crate parking_lot;
 
 mod transaction;
@@ -253,6 +309,9 @@ where F: Fn(&mut Transaction) -> StmResult<T>
     with(TxVersion::Deterministic(h), f)
 }
 
+pub fn freeze(mut d:DTM){
+    d.freeze()
+}
 
 #[cfg(test)]
 mod test_lib {
